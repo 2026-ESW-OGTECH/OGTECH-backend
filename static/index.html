@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>오프라인 SafeAid Kit</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <strong>오프라인 SafeAid Kit</strong>
+        <span id="connectionStatus">로컬 모드</span>
+      </div>
+      <nav class="danger-actions" aria-label="생명위험 바로가기">
+        <button data-risk="unconscious">의식 없음</button>
+        <button data-risk="abnormal_breathing">정상 호흡 아님</button>
+        <button data-risk="massive_bleeding">대량 출혈</button>
+        <button id="emergencyBtn" class="danger">119 도움 요청</button>
+      </nav>
+    </header>
+
+    <main class="layout">
+      <section class="workbench">
+        <div class="notice" id="disclaimer"></div>
+
+        <div class="input-band">
+          <button class="mode-tab active" data-panel="scenarioPanel">상황 선택</button>
+          <button class="mode-tab" data-panel="voicePanel">말로 설명</button>
+          <button class="mode-tab" data-panel="inventoryPanel">물품 찾기</button>
+          <button class="mode-tab" data-panel="photoPanel">사진 촬영</button>
+          <button class="mode-tab danger-text" data-panel="emergencyPanel">119 도움 요청</button>
+        </div>
+
+        <section id="scenarioPanel" class="panel active">
+          <div class="panel-head">
+            <h1>상황 선택</h1>
+            <p>터치만으로도 전체 절차가 진행됩니다.</p>
+          </div>
+          <div id="scenarioGrid" class="scenario-grid"></div>
+        </section>
+
+        <section id="voicePanel" class="panel">
+          <div class="panel-head">
+            <h1>말로 설명</h1>
+            <p>발화를 시나리오 JSON으로 분류하고, 처치 방법은 고정 카드에서만 불러옵니다.</p>
+          </div>
+          <div class="voice-row">
+            <textarea id="voiceText" rows="4" placeholder="예: 캠핑하다 손을 베었고 피가 계속 나요"></textarea>
+            <div class="voice-buttons">
+              <button id="listenBtn">음성 입력</button>
+              <button id="classifyBtn" class="primary">분류하기</button>
+            </div>
+          </div>
+          <div id="classifyResult" class="result-box hidden"></div>
+        </section>
+
+        <section id="inventoryPanel" class="panel">
+          <div class="panel-head">
+            <h1>물품 찾기</h1>
+            <p>등록된 재고 안에서만 위치를 찾고, 약품 사용법은 안내하지 않습니다.</p>
+          </div>
+          <div class="voice-row">
+            <textarea id="inventoryQueryText" rows="3" placeholder="예: 후시딘 있어?"></textarea>
+            <div class="voice-buttons">
+              <button id="listenInventoryBtn">음성 입력</button>
+              <button id="searchInventoryBtn" class="primary">찾기</button>
+            </div>
+          </div>
+          <div id="inventoryResult" class="result-box hidden"></div>
+
+          <form id="inventoryForm" class="inventory-form" aria-label="개인 상비약 등록">
+            <h2>개인 물품 등록</h2>
+            <input id="itemName" required placeholder="물품명" />
+            <input id="itemAliases" placeholder="별칭, 쉼표로 구분" />
+            <select id="itemLayer">
+              <option value="1">1단</option>
+              <option value="2">2단</option>
+              <option value="3" selected>3단</option>
+            </select>
+            <input id="itemCell" required value="3-2" placeholder="칸: 3-2" />
+            <input id="itemQuantity" type="number" min="0" value="1" placeholder="수량" />
+            <input id="itemExpiry" type="date" />
+            <label class="check-row">
+              <input id="itemMedicine" type="checkbox" />
+              <span>일반의약품</span>
+            </label>
+            <button class="primary">등록</button>
+          </form>
+        </section>
+
+        <section id="photoPanel" class="panel">
+          <div class="panel-head">
+            <h1>사진 촬영</h1>
+            <p>진단이 아니라 출혈/화상 가능성과 사진 품질만 보조 감지합니다.</p>
+          </div>
+          <div class="photo-row">
+            <label class="file-picker">
+              <input id="photoInput" type="file" accept="image/*" capture="environment" />
+              사진 선택 또는 촬영
+            </label>
+            <button id="analyzePhotoBtn" class="primary">사진 분석</button>
+          </div>
+          <div id="photoResult" class="photo-result hidden"></div>
+        </section>
+
+        <section id="emergencyPanel" class="panel">
+          <div class="panel-head">
+            <h1>119 도움 요청</h1>
+            <p>자동 발신이 아니라 신고 내용을 정리해 휴대폰으로 직접 연결하도록 돕습니다.</p>
+          </div>
+          <div id="emergencyContent" class="emergency-content"></div>
+          <button id="startCprBtn" class="danger wide">성인 Hands-only CPR 카드 열기</button>
+        </section>
+
+        <section id="sessionPanel" class="session hidden" aria-live="polite"></section>
+      </section>
+
+      <aside class="side">
+        <section class="side-section">
+          <h2>구급함 LED</h2>
+          <div id="drawerList" class="drawer-list"></div>
+        </section>
+        <section class="side-section">
+          <h2>키트 상태</h2>
+          <div id="kitStatus" class="kit-status"></div>
+        </section>
+        <section class="side-section">
+          <h2>재고 현황</h2>
+          <div id="inventoryList" class="inventory-list"></div>
+        </section>
+        <section class="side-section">
+          <h2>센서 입력</h2>
+          <div class="sensor-row">
+            <label for="coPpm">CO ppm</label>
+            <input id="coPpm" type="number" min="0" value="0" />
+            <button id="coSensorBtn">전송</button>
+          </div>
+        </section>
+        <section class="side-section">
+          <h2>시스템 로그</h2>
+          <div id="eventLog" class="event-log"></div>
+        </section>
+      </aside>
+    </main>
+
+    <dialog id="riskDialog">
+      <form method="dialog" class="dialog-body">
+        <h2 id="riskTitle">위험 신호 확인</h2>
+        <div id="riskQuestions" class="risk-questions"></div>
+        <div class="dialog-actions">
+          <button value="cancel">취소</button>
+          <button id="riskStartBtn" value="start" class="primary">절차 시작</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>
