@@ -126,7 +126,7 @@ class SafeAidHandler(BaseHTTPRequestHandler):
         if path == "/api/kit/battery":
             payload = self.read_json()
             result = kit.update_battery(
-                voltage=float(payload.get("voltage", 7.4)),
+                voltage=float(payload.get("voltage", 13.2)),
                 percent=int(payload.get("percent", 0)),
                 charging=bool(payload.get("charging", False)),
             )

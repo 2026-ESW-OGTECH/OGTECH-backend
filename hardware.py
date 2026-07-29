@@ -17,7 +17,7 @@ class LedState:
 class LedController:
     """모의 구현을 우선 사용하는 LED 컨트롤러.
 
-    Raspberry Pi에서는 LED 개수와 GPIO 핀이 확정된 뒤 모의 분기를
+    Jetson/STM32 실장에서는 LED 개수와 GPIO 핀이 확정된 뒤 모의 분기를
     WS2812B 드라이버로 교체하세요. 안전을 위해 API는 의도적으로 작게 유지합니다.
     """
 
@@ -65,7 +65,7 @@ class KitState:
     stock_sensors: dict[str, bool] = field(default_factory=dict)
     battery: dict[str, Any] = field(
         default_factory=lambda: {
-            "voltage": 7.4,
+            "voltage": 13.2,
             "percent": 74,
             "charging": True,
             "low": False,
@@ -81,7 +81,7 @@ class KitController:
     """
 
     LOW_BATTERY_PERCENT = 10
-    LOW_BATTERY_VOLTAGE = 6.4
+    LOW_BATTERY_VOLTAGE = 11.0
 
     def __init__(self, runtime_dir: Path) -> None:
         self.runtime_dir = runtime_dir

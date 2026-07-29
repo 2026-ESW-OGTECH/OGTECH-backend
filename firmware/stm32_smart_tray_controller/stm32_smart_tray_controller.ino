@@ -2,20 +2,29 @@
 #include <Servo.h>
 
 const int LAYER_COUNT = 3;
-const int CELL_COUNT = 6;
+const int SERVO_COUNT = 4;
+const int CELL_COUNT = 10;
 
-const uint8_t SERVO_PINS[LAYER_COUNT] = {PA0, PA1, PA2};
-const uint8_t CELL_LED_PINS[CELL_COUNT] = {PB0, PB1, PB2, PB3, PB4, PB5};
-const uint8_t STOCK_SENSOR_PINS[CELL_COUNT] = {PC0, PC1, PC2, PC3, PC4, PC5};
-const uint8_t BATTERY_ADC_PIN = PA3;
+const uint8_t SERVO_PINS[SERVO_COUNT] = {PA0, PA1, PA2, PA3};
+const uint8_t CELL_LED_PINS[CELL_COUNT] = {PB0, PB1, PB2, PB3, PB4, PB5, PB6, PB7, PB8, PB9};
+const uint8_t STOCK_SENSOR_PINS[CELL_COUNT] = {PC0, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, PC9};
+const uint8_t BATTERY_ADC_PIN = PA4;
 
-const char* CELL_IDS[CELL_COUNT] = {"1-1", "2-1", "2-2", "3-1", "3-2", "3-3"};
+const float BATTERY_DIVIDER_RATIO = 5.0f;
+const float BATTERY_EMPTY_VOLTAGE = 10.0f;
+const float BATTERY_FULL_VOLTAGE = 14.6f;
+
+const char* CELL_IDS[CELL_COUNT] = {
+  "1-1", "1-2", "1-3",
+  "2-1", "2-2", "2-3", "2-4", "2-5", "2-6",
+  "3-1",
+};
 
 const int SERVO_LOCK_ANGLE = 15;
 const int SERVO_RELEASE_ANGLE = 70;
 const unsigned long RELEASE_MS = 650;
 
-Servo layerServos[LAYER_COUNT];
+Servo actuatorServos[SERVO_COUNT];
 int openLayer = 0;
 String activeCell = "";
 
@@ -65,7 +74,7 @@ void openLayerLatch(int layer) {
     printError("invalid_layer");
     return;
   }
-  Servo& servo = layerServos[layer - 1];
+  Servo& servo = actuatorServos[layer - 1];
   servo.write(SERVO_RELEASE_ANGLE);
   delay(RELEASE_MS);
   servo.write(SERVO_LOCK_ANGLE);
@@ -98,9 +107,13 @@ void readStock() {
 
 void readBattery() {
   int raw = analogRead(BATTERY_ADC_PIN);
-  float adcVoltage = (raw / 1023.0) * 3.3;
-  float packVoltage = adcVoltage * 3.0;
-  int percent = constrain((int)((packVoltage - 6.4) * 100.0 / (8.4 - 6.4)), 0, 100);
+  float adcVoltage = (raw / 1023.0f) * 3.3f;
+  float packVoltage = adcVoltage * BATTERY_DIVIDER_RATIO;
+  int percent = constrain(
+    (int)((packVoltage - BATTERY_EMPTY_VOLTAGE) * 100.0f / (BATTERY_FULL_VOLTAGE - BATTERY_EMPTY_VOLTAGE)),
+    0,
+    100
+  );
   Serial.print("{\"ok\":true,\"event\":\"battery\",\"voltage\":");
   Serial.print(packVoltage, 2);
   Serial.print(",\"percent\":");
@@ -138,9 +151,9 @@ void handleCommand(String line) {
 
 void setup() {
   Serial.begin(115200);
-  for (int i = 0; i < LAYER_COUNT; i++) {
-    layerServos[i].attach(SERVO_PINS[i]);
-    layerServos[i].write(SERVO_LOCK_ANGLE);
+  for (int i = 0; i < SERVO_COUNT; i++) {
+    actuatorServos[i].attach(SERVO_PINS[i]);
+    actuatorServos[i].write(SERVO_LOCK_ANGLE);
   }
   for (int i = 0; i < CELL_COUNT; i++) {
     pinMode(CELL_LED_PINS[i], OUTPUT);

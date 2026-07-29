@@ -2,159 +2,236 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>오프라인 SafeAid Kit</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>SmartAid Kit</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header class="topbar">
-      <div>
-        <strong>오프라인 SafeAid Kit</strong>
-        <span id="connectionStatus">로컬 모드</span>
-      </div>
-      <nav class="danger-actions" aria-label="생명위험 바로가기">
-        <button data-risk="unconscious">의식 없음</button>
-        <button data-risk="abnormal_breathing">정상 호흡 아님</button>
-        <button data-risk="massive_bleeding">대량 출혈</button>
-        <button id="emergencyBtn" class="danger">119 도움 요청</button>
-      </nav>
-    </header>
-
-    <main class="layout">
-      <section class="workbench">
-        <div class="notice" id="disclaimer"></div>
-
-        <div class="input-band">
-          <button class="mode-tab active" data-panel="scenarioPanel">상황 선택</button>
-          <button class="mode-tab" data-panel="voicePanel">말로 설명</button>
-          <button class="mode-tab" data-panel="inventoryPanel">물품 찾기</button>
-          <button class="mode-tab" data-panel="photoPanel">사진 촬영</button>
-          <button class="mode-tab danger-text" data-panel="emergencyPanel">119 도움 요청</button>
-        </div>
-
-        <section id="scenarioPanel" class="panel active">
-          <div class="panel-head">
-            <h1>상황 선택</h1>
-            <p>터치만으로도 전체 절차가 진행됩니다.</p>
-          </div>
-          <div id="scenarioGrid" class="scenario-grid"></div>
-        </section>
-
-        <section id="voicePanel" class="panel">
-          <div class="panel-head">
-            <h1>말로 설명</h1>
-            <p>발화를 시나리오 JSON으로 분류하고, 처치 방법은 고정 카드에서만 불러옵니다.</p>
-          </div>
-          <div class="voice-row">
-            <textarea id="voiceText" rows="4" placeholder="예: 캠핑하다 손을 베었고 피가 계속 나요"></textarea>
-            <div class="voice-buttons">
-              <button id="listenBtn">음성 입력</button>
-              <button id="classifyBtn" class="primary">분류하기</button>
+    <div class="stage">
+      <div class="frame">
+        <header class="appbar">
+          <div class="brand">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7z" fill="currentColor" /></svg>
+            </span>
+            <div class="brand-text">
+              <strong>SmartAid Kit</strong>
+              <span id="connectionStatus" class="status-pill">로컬 모드</span>
             </div>
           </div>
-          <div id="classifyResult" class="result-box hidden"></div>
-        </section>
-
-        <section id="inventoryPanel" class="panel">
-          <div class="panel-head">
-            <h1>물품 찾기</h1>
-            <p>등록된 재고 안에서만 위치를 찾고, 약품 사용법은 안내하지 않습니다.</p>
+          <div class="appbar-actions">
+            <button id="emergencyBtn" class="danger pill-btn">
+              <span class="dot-119" aria-hidden="true"></span>119 도움 요청
+            </button>
+            <button class="mode-tab icon-btn" data-panel="settingsPanel" aria-label="키트 설정">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.5 12c0-.5 0-1-.1-1.4l1.8-1.4-2-3.4-2.1.9c-.6-.5-1.3-.9-2-1.2L14.5 2h-4l-.6 2.1c-.7.3-1.4.7-2 1.2l-2.1-.9-2 3.4 1.8 1.4c-.1.4-.1.9-.1 1.4s0 1 .1 1.4l-1.8 1.4 2 3.4 2.1-.9c.6.5 1.3.9 2 1.2l.6 2.1h4l.6-2.1c.7-.3 1.4-.7 2-1.2l2.1.9 2-3.4-1.8-1.4c.1-.4.1-.9.1-1.4z" /></svg>
+            </button>
           </div>
-          <div class="voice-row">
-            <textarea id="inventoryQueryText" rows="3" placeholder="예: 후시딘 있어?"></textarea>
-            <div class="voice-buttons">
-              <button id="listenInventoryBtn">음성 입력</button>
-              <button id="searchInventoryBtn" class="primary">찾기</button>
+        </header>
+
+        <main class="views">
+          <!-- ============ HOME ============ -->
+          <section id="scenarioPanel" class="panel active">
+            <div class="view-head home-head">
+              <div class="view-titles">
+                <p class="view-eyebrow">무엇을 도와드릴까요?</p>
+                <h2 class="view-title">어떤 상황인가요?</h2>
+              </div>
+              <div class="mode-switch">
+                <button class="mode-tab" data-panel="voicePanel">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0" /><line x1="12" y1="18" x2="12" y2="21" /></svg>
+                  말로 설명
+                </button>
+                <button class="mode-tab" data-panel="photoPanel">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle cx="12" cy="13" r="3.2" /></svg>
+                  사진
+                </button>
+                <button class="mode-tab" data-panel="inventoryPanel">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="12" y1="11" x2="12" y2="16" /><line x1="9.5" y1="13.5" x2="14.5" y2="13.5" /></svg>
+                  상비약
+                </button>
+              </div>
             </div>
-          </div>
-          <div id="inventoryResult" class="result-box hidden"></div>
+            <div id="scenarioGrid" class="scenario-grid"></div>
+            <div class="danger-actions" aria-label="생명위험 바로가기">
+              <span class="danger-actions-label">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3z" /><line x1="12" y1="10" x2="12" y2="14" /><circle cx="12" cy="17" r="1.1" fill="currentColor" stroke="none" /></svg>
+                생명이 위험하면
+              </span>
+              <div class="danger-actions-btns">
+                <button data-risk="unconscious">의식이 없어요</button>
+                <button data-risk="abnormal_breathing">숨을 안 쉬어요</button>
+                <button data-risk="massive_bleeding">출혈이 안 멈춰요</button>
+              </div>
+            </div>
+          </section>
 
-          <form id="inventoryForm" class="inventory-form" aria-label="개인 상비약 등록">
-            <h2>개인 물품 등록</h2>
-            <input id="itemName" required placeholder="물품명" />
-            <input id="itemAliases" placeholder="별칭, 쉼표로 구분" />
-            <select id="itemLayer">
-              <option value="1">1단</option>
-              <option value="2">2단</option>
-              <option value="3" selected>3단</option>
-            </select>
-            <input id="itemCell" required value="3-2" placeholder="칸: 3-2" />
-            <input id="itemQuantity" type="number" min="0" value="1" placeholder="수량" />
-            <input id="itemExpiry" type="date" />
-            <label class="check-row">
-              <input id="itemMedicine" type="checkbox" />
-              <span>일반의약품</span>
-            </label>
-            <button class="primary">등록</button>
-          </form>
-        </section>
+          <!-- ============ VOICE ============ -->
+          <section id="voicePanel" class="panel">
+            <div class="view-head">
+              <button class="mode-tab back-btn" data-panel="scenarioPanel" aria-label="홈으로">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+              </button>
+              <div class="view-titles">
+                <h2 class="view-title">말로 설명하기</h2>
+                <p class="view-sub">무슨 일이 있었는지 편하게 말하거나 적어 주세요.</p>
+              </div>
+            </div>
+            <div class="form-card">
+              <textarea id="voiceText" rows="4" placeholder="예: 캠핑하다 손을 베었고 피가 계속 나요"></textarea>
+              <div class="btn-row">
+                <button id="listenBtn" class="ghost-btn">음성 입력</button>
+                <button id="classifyBtn" class="primary big-btn">분류하기</button>
+              </div>
+            </div>
+            <div id="classifyResult" class="result-box hidden"></div>
+          </section>
 
-        <section id="photoPanel" class="panel">
-          <div class="panel-head">
-            <h1>사진 촬영</h1>
-            <p>진단이 아니라 출혈/화상 가능성과 사진 품질만 보조 감지합니다.</p>
-          </div>
-          <div class="photo-row">
-            <label class="file-picker">
-              <input id="photoInput" type="file" accept="image/*" capture="environment" />
-              사진 선택 또는 촬영
-            </label>
-            <button id="analyzePhotoBtn" class="primary">사진 분석</button>
-          </div>
-          <div id="photoResult" class="photo-result hidden"></div>
-        </section>
+          <!-- ============ INVENTORY ============ -->
+          <section id="inventoryPanel" class="panel">
+            <div class="view-head">
+              <button class="mode-tab back-btn" data-panel="scenarioPanel" aria-label="홈으로">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+              </button>
+              <div class="view-titles">
+                <h2 class="view-title">상비약 찾기</h2>
+                <p class="view-sub">등록된 물품의 위치만 안내하고, 복용 방법은 알려주지 않아요.</p>
+              </div>
+            </div>
+            <div class="inv-layout">
+              <div class="inv-col">
+                <div class="form-card">
+                  <textarea id="inventoryQueryText" rows="3" placeholder="예: 후시딘 있어?"></textarea>
+                  <div class="btn-row">
+                    <button id="listenInventoryBtn" class="ghost-btn">음성 입력</button>
+                    <button id="searchInventoryBtn" class="primary big-btn">찾기</button>
+                  </div>
+                </div>
+                <div id="inventoryResult" class="result-box hidden"></div>
+              </div>
+              <div class="inv-list-card">
+                <h3 class="card-title">등록된 상비약</h3>
+                <div id="inventoryList" class="inventory-list"></div>
+              </div>
+            </div>
+          </section>
 
-        <section id="emergencyPanel" class="panel">
-          <div class="panel-head">
-            <h1>119 도움 요청</h1>
-            <p>자동 발신이 아니라 신고 내용을 정리해 휴대폰으로 직접 연결하도록 돕습니다.</p>
-          </div>
-          <div id="emergencyContent" class="emergency-content"></div>
-          <button id="startCprBtn" class="danger wide">성인 Hands-only CPR 카드 열기</button>
-        </section>
+          <!-- ============ PHOTO ============ -->
+          <section id="photoPanel" class="panel">
+            <div class="view-head">
+              <button class="mode-tab back-btn" data-panel="scenarioPanel" aria-label="홈으로">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+              </button>
+              <div class="view-titles">
+                <h2 class="view-title">사진으로 확인</h2>
+                <p class="view-sub">진단이 아니라 출혈·화상 가능성과 사진 품질만 살펴봐요.</p>
+              </div>
+            </div>
+            <div class="form-card photo-card">
+              <label class="file-picker">
+                <input id="photoInput" type="file" accept="image/*" capture="environment" />
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle cx="12" cy="13" r="3.2" /></svg>
+                <span>사진 선택 또는 촬영</span>
+              </label>
+              <button id="analyzePhotoBtn" class="primary big-btn">사진 분석</button>
+            </div>
+            <div id="photoResult" class="photo-result hidden"></div>
+          </section>
 
+          <!-- ============ EMERGENCY (119) ============ -->
+          <section id="emergencyPanel" class="panel">
+            <div class="view-head">
+              <button class="mode-tab back-btn" data-panel="scenarioPanel" aria-label="홈으로">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+              </button>
+              <div class="view-titles">
+                <h2 class="view-title">119 도움 요청</h2>
+                <p class="view-sub">자동 발신이 아니라, 신고할 내용을 정리해 드려요.</p>
+              </div>
+            </div>
+            <div id="emergencyContent" class="emergency-content"></div>
+            <button id="startCprBtn" class="danger wide big-btn">성인 심폐소생술(CPR) 안내 열기</button>
+          </section>
+
+          <!-- ============ SETTINGS / KIT (admin + demo) ============ -->
+          <section id="settingsPanel" class="panel">
+            <div class="view-head">
+              <button class="mode-tab back-btn" data-panel="scenarioPanel" aria-label="홈으로">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+              </button>
+              <div class="view-titles">
+                <h2 class="view-title">키트 설정</h2>
+                <p class="view-sub">구급함 상태와 물품을 관리하고, 데모용 센서를 시험합니다.</p>
+              </div>
+            </div>
+            <div class="settings-grid">
+              <section class="settings-card">
+                <h3 class="card-title">구급함 LED</h3>
+                <div id="drawerList" class="drawer-list"></div>
+              </section>
+              <section class="settings-card">
+                <h3 class="card-title">키트 상태</h3>
+                <div id="kitStatus" class="kit-status"></div>
+              </section>
+              <section class="settings-card">
+                <h3 class="card-title">물품 등록</h3>
+                <form id="inventoryForm" class="inventory-form" aria-label="개인 상비약 등록">
+                  <input id="itemName" required placeholder="물품명" />
+                  <input id="itemAliases" placeholder="별칭, 쉼표로 구분" />
+                  <div class="form-row">
+                    <select id="itemLayer">
+                      <option value="1">1단</option>
+                      <option value="2">2단</option>
+                      <option value="3" selected>3단</option>
+                    </select>
+                    <input id="itemCell" required value="3-1" placeholder="칸: 3-1" />
+                  </div>
+                  <div class="form-row">
+                    <input id="itemQuantity" type="number" min="0" value="1" placeholder="수량" />
+                    <input id="itemExpiry" type="date" />
+                  </div>
+                  <label class="check-row">
+                    <input id="itemMedicine" type="checkbox" />
+                    <span>일반의약품</span>
+                  </label>
+                  <button class="primary">등록</button>
+                </form>
+              </section>
+              <section class="settings-card">
+                <h3 class="card-title">센서 · 로그 <span class="card-tag">데모</span></h3>
+                <div class="sensor-row">
+                  <label for="coPpm">CO ppm</label>
+                  <input id="coPpm" type="number" min="0" value="0" />
+                  <button id="coSensorBtn" class="ghost-btn">전송</button>
+                </div>
+                <div id="eventLog" class="event-log"></div>
+              </section>
+            </div>
+          </section>
+        </main>
+
+        <footer class="legal">
+          <p class="notice" id="disclaimer"></p>
+        </footer>
+
+        <!-- Full-screen step takeover -->
         <section id="sessionPanel" class="session hidden" aria-live="polite"></section>
-      </section>
-
-      <aside class="side">
-        <section class="side-section">
-          <h2>구급함 LED</h2>
-          <div id="drawerList" class="drawer-list"></div>
-        </section>
-        <section class="side-section">
-          <h2>키트 상태</h2>
-          <div id="kitStatus" class="kit-status"></div>
-        </section>
-        <section class="side-section">
-          <h2>재고 현황</h2>
-          <div id="inventoryList" class="inventory-list"></div>
-        </section>
-        <section class="side-section">
-          <h2>센서 입력</h2>
-          <div class="sensor-row">
-            <label for="coPpm">CO ppm</label>
-            <input id="coPpm" type="number" min="0" value="0" />
-            <button id="coSensorBtn">전송</button>
-          </div>
-        </section>
-        <section class="side-section">
-          <h2>시스템 로그</h2>
-          <div id="eventLog" class="event-log"></div>
-        </section>
-      </aside>
-    </main>
+      </div>
+    </div>
 
     <dialog id="riskDialog">
       <form method="dialog" class="dialog-body">
         <h2 id="riskTitle">위험 신호 확인</h2>
+        <p class="dialog-sub">해당되는 항목을 선택하면 더 안전하게 안내해 드려요.</p>
         <div id="riskQuestions" class="risk-questions"></div>
         <div class="dialog-actions">
-          <button value="cancel">취소</button>
-          <button id="riskStartBtn" value="start" class="primary">절차 시작</button>
+          <button value="cancel" class="ghost-btn">취소</button>
+          <button id="riskStartBtn" value="start" class="primary big-btn">절차 시작</button>
         </div>
       </form>
     </dialog>
 
+    <script src="demo-data.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

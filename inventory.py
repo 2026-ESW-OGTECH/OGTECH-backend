@@ -50,39 +50,45 @@ DEFAULT_INVENTORY = [
         "id": "band_aid",
         "name": "밴드",
         "aliases": ["밴드", "반창고", "일회용 밴드"],
-        "layer": 3,
-        "cell": "3-1",
+        "layer": 2,
+        "cell": "2-3",
         "quantity": 12,
         "expiry_date": "2027-01-31",
         "is_medicine": False,
         "auto_open_allowed": True,
-        "sensor_id": "stock_3_1",
+        "sensor_id": "stock_2_3",
     },
     {
         "id": "personal_pills",
         "name": "개인 상비약 통",
         "aliases": ["개인약", "상비약", "알약통"],
-        "layer": 3,
-        "cell": "3-2",
+        "layer": 2,
+        "cell": "2-4",
         "quantity": 1,
         "expiry_date": "2026-08-31",
         "is_medicine": True,
         "auto_open_allowed": True,
-        "sensor_id": "stock_3_2",
+        "sensor_id": "stock_2_4",
     },
     {
         "id": "ppe",
         "name": "장갑/마스크",
         "aliases": ["장갑", "마스크", "보호 장비"],
         "layer": 3,
-        "cell": "3-3",
+        "cell": "3-1",
         "quantity": 2,
         "expiry_date": "2028-12-31",
         "is_medicine": False,
         "auto_open_allowed": True,
-        "sensor_id": "stock_3_3",
+        "sensor_id": "stock_3_1",
     },
 ]
+
+ALLOWED_CELLS_BY_LAYER = {
+    1: {"1-1", "1-2", "1-3"},
+    2: {"2-1", "2-2", "2-3", "2-4", "2-5", "2-6"},
+    3: {"3-1"},
+}
 
 
 @dataclass
@@ -193,8 +199,10 @@ class InventoryStore:
             raise ValueError("물품명이 필요합니다.")
         if item.layer not in {1, 2, 3}:
             raise ValueError("층은 1, 2, 3 중 하나여야 합니다.")
-        if not re.fullmatch(r"[1-3]-[1-3]", item.cell):
-            raise ValueError("칸은 1-1, 2-1, 3-2 같은 형식이어야 합니다.")
+        allowed_cells = ALLOWED_CELLS_BY_LAYER[item.layer]
+        if item.cell not in allowed_cells:
+            allowed = ", ".join(sorted(allowed_cells))
+            raise ValueError(f"{item.layer}층 칸은 {allowed} 중 하나여야 합니다.")
         if not item.aliases:
             item.aliases = [item.name]
         if not item.sensor_id:

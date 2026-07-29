@@ -17,85 +17,15 @@ const appState = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
+function cloneDemo(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 const DEMO_STATE = {
   disclaimer: "본 화면은 정적 데모 모드입니다. 의료기기가 아니며 진단/치료/복약 판단을 수행하지 않습니다.",
-  scenarios: [
-    {
-      id: "bleeding",
-      title: "출혈",
-      subtitle: "피가 나는 상처의 직접 압박과 119 판단 보조",
-      drawers: ["ppe", "gauze"],
-      risk_questions: [
-        { id: "massive_bleeding", text: "피가 많이 나거나 멈추지 않음" },
-        { id: "unconscious", text: "의식이 없거나 반응이 약함" },
-      ],
-    },
-    {
-      id: "burn",
-      title: "화상",
-      subtitle: "냉각과 보호 물품 위치 안내",
-      drawers: ["burn_pad"],
-      risk_questions: [
-        { id: "large_burn", text: "넓은 부위 또는 얼굴/기도 화상 의심" },
-      ],
-    },
-    {
-      id: "cpr",
-      title: "CPR",
-      subtitle: "119 연결과 110 BPM 메트로놈 보조",
-      drawers: [],
-      risk_questions: [
-        { id: "unconscious", text: "의식 없음" },
-        { id: "abnormal_breathing", text: "정상 호흡 아님" },
-      ],
-    },
-  ],
-  drawers: [
-    { id: "ppe", label: "3단", item: "장갑/마스크", color: "#0f766e" },
-    { id: "gauze", label: "1단", item: "거즈/붕대", color: "#dc2626" },
-    { id: "burn_pad", label: "2단", item: "화상 패드", color: "#2563eb" },
-  ],
-  inventory: [
-    {
-      id: "fucidin",
-      name: "후시딘",
-      aliases: ["후시딘", "연고"],
-      layer: 2,
-      cell: "2-1",
-      quantity: 1,
-      expiry_date: "2026-12-31",
-      available: true,
-      expired: false,
-      is_medicine: true,
-      auto_open_allowed: true,
-    },
-    {
-      id: "band_aid",
-      name: "밴드",
-      aliases: ["밴드", "반창고"],
-      layer: 3,
-      cell: "3-1",
-      quantity: 8,
-      expiry_date: "2027-03-31",
-      available: true,
-      expired: false,
-      is_medicine: false,
-      auto_open_allowed: true,
-    },
-    {
-      id: "danger_painkiller",
-      name: "위험 의약품 보관칸",
-      aliases: ["마약성 진통제", "주사기", "위험 의약품"],
-      layer: 3,
-      cell: "3-3",
-      quantity: 1,
-      expiry_date: "2026-10-31",
-      available: true,
-      expired: false,
-      is_medicine: true,
-      auto_open_allowed: false,
-    },
-  ],
+  scenarios: cloneDemo(SCENARIO_CATALOG),
+  drawers: cloneDemo(DRAWER_CATALOG),
+  inventory: cloneDemo(DEMO_INVENTORY),
   led: { state: { active_drawers: [], display_mode: "idle" } },
   kit: {
     mode: "static-demo",
@@ -103,17 +33,13 @@ const DEMO_STATE = {
       open_layer: null,
       active_cell: null,
       stock: {},
-      battery: { voltage: 7.8, percent: 82, charging: false, low: false },
+      battery: { voltage: 13.2, percent: 82, charging: false, low: false },
     },
   },
   events: [{ at: "정적 데모", event: "static_demo_ready", payload: { mode: "browser_only" } }],
   sessions: {},
   nextSessionId: 1,
 };
-
-function cloneDemo(value) {
-  return JSON.parse(JSON.stringify(value));
-}
 
 function demoEvent(event, payload = {}) {
   DEMO_STATE.events.unshift({ at: new Date().toLocaleTimeString("ko-KR"), event, payload });
@@ -154,34 +80,48 @@ function demoInventoryQuery(text) {
 }
 
 function demoClassify(text) {
-  const normalized = String(text || "");
-  const scenarioId = normalized.includes("화상") ? "burn" : normalized.includes("심폐") || normalized.includes("의식") ? "cpr" : "bleeding";
-  const scenario = DEMO_STATE.scenarios.find((item) => item.id === scenarioId);
+  const normalized = String(text || "").toLowerCase().replace(/\s+/g, "");
+  const scores = DEMO_STATE.scenarios.map((scenario) => {
+    const score = (scenario.keywords || []).reduce((sum, keyword) => {
+      const term = String(keyword).toLowerCase().replace(/\s+/g, "");
+      return normalized.includes(term) ? sum + (term.length > 1 ? 2 : 1) : sum;
+    }, 0);
+    return { scenario, score };
+  });
+  scores.sort((a, b) => b.score - a.score);
+  const best = scores[0]?.score > 0 ? scores[0].scenario : DEMO_STATE.scenarios[0];
   const riskFlags = [];
-  if (normalized.includes("의식")) riskFlags.push("unconscious");
-  if (normalized.includes("호흡")) riskFlags.push("abnormal_breathing");
-  if (normalized.includes("피") || normalized.includes("출혈")) riskFlags.push("massive_bleeding");
+  if (normalized.includes("의식") || normalized.includes("기절") || normalized.includes("쓰러")) riskFlags.push("unconscious");
+  if (normalized.includes("호흡") || normalized.includes("숨") || normalized.includes("헐떡")) riskFlags.push("abnormal_breathing");
+  if (normalized.includes("분출") || normalized.includes("대량") || normalized.includes("피가계속")) riskFlags.push("massive_bleeding");
+  if (normalized.includes("알레르기") || normalized.includes("입술") || normalized.includes("두드러기")) riskFlags.push("severe_allergy");
+  if (normalized.includes("일산화탄소") || normalized.includes("난로") || normalized.includes("화로") || normalized.includes("밀폐")) riskFlags.push("co_exposure");
   return {
-    scenario_id: scenario.id,
-    scenario_title: scenario.title,
-    confidence: "medium",
-    risk_flags: riskFlags,
-    classifier: "static-demo",
+    scenario_id: best.id,
+    scenario_title: best.title,
+    confidence: scores[0]?.score >= 3 ? "high" : scores[0]?.score > 0 ? "medium" : "low",
+    risk_flags: [...new Set(riskFlags)],
+    classifier: "static-keyword-demo",
   };
 }
 
 function makeDemoSession(scenarioId, riskFlags = []) {
-  const scenario = DEMO_STATE.scenarios.find((item) => item.id === scenarioId) || DEMO_STATE.scenarios[0];
-  const forceEmergency = riskFlags.some((flag) => ["unconscious", "abnormal_breathing", "massive_bleeding"].includes(flag));
-  const steps = scenario.id === "cpr"
-    ? [
-      { title: "119 연결", body: "주변 사람에게 119 신고와 AED 요청을 맡기세요.", visual: "call119" },
-      { title: "가슴압박 템포", body: "성인 기준 110 BPM 템포 보조음만 제공합니다.", visual: "cpr", metronome: true },
-    ]
-    : [
-      { title: "위험 신호 확인", body: "심한 출혈, 의식 저하, 호흡 이상이 있으면 119 도움 요청 화면으로 이동하세요.", visual: "checklist" },
-      { title: "물품 위치 안내", body: "필요 물품이 있는 칸의 LED와 층 상태를 표시합니다. 약 복용법이나 처치 판단은 제공하지 않습니다.", visual: scenario.id === "burn" ? "cool_water" : "press", timer_sec: scenario.id === "burn" ? 120 : null },
-    ];
+  const scenario = scenarioId === "cpr"
+    ? {
+      id: "cpr",
+      title: "성인 Hands-only CPR",
+      subtitle: "119 신고 후 가슴압박 보조 안내",
+      category: "생명위험",
+      priority: "110 BPM",
+      drawers: [],
+      risk_questions: [],
+      steps: CPR_DEMO_STEPS,
+    }
+    : DEMO_STATE.scenarios.find((item) => item.id === scenarioId) || DEMO_STATE.scenarios[0];
+
+  const forceEmergency = riskFlags.some((flag) => Object.prototype.hasOwnProperty.call(LIFE_THREAT_LABELS, flag))
+    || scenario.steps.some((step) => step.force_emergency);
+  const steps = scenario.steps;
   const session = {
     id: `demo-${DEMO_STATE.nextSessionId++}`,
     scenario,
@@ -190,7 +130,7 @@ function makeDemoSession(scenarioId, riskFlags = []) {
     step: steps[0],
     steps,
     drawers: scenario.drawers.map((drawerId) => DEMO_STATE.drawers.find((drawer) => drawer.id === drawerId)).filter(Boolean),
-    risk_labels: riskFlags,
+    risk_labels: riskFlags.map((flag) => LIFE_THREAT_LABELS[flag] || flag),
     force_emergency: forceEmergency,
     completed: false,
   };
@@ -261,7 +201,7 @@ async function localDemoFetch(url, options = {}) {
         name: body.name || "개인 물품",
         aliases: body.aliases || [],
         layer: Number(body.layer || 3),
-        cell: body.cell || "3-2",
+        cell: body.cell || "3-1",
         quantity: Number(body.quantity || 1),
         expiry_date: body.expiry_date || "2026-12-31",
         available: Number(body.quantity || 1) > 0,
@@ -276,7 +216,7 @@ async function localDemoFetch(url, options = {}) {
     case "/api/sensor/co": {
       const danger = Number(body.ppm || 0) >= 50;
       if (danger) {
-        const session = makeDemoSession("cpr", ["co_exposure"]);
+        const session = makeDemoSession("co", ["co_exposure"]);
         return { danger, session, led: cloneDemo(DEMO_STATE.led) };
       }
       demoEvent("demo_co_sensor", { ppm: Number(body.ppm || 0), danger });
@@ -284,9 +224,12 @@ async function localDemoFetch(url, options = {}) {
     }
     case "/api/vision/upload":
       return {
-        analysis: { summary: "정적 데모 모드에서는 사진을 실제 분석하지 않습니다.", flags: ["static_demo"] },
-        suggested_scenario_id: null,
-        suggested_title: null,
+        analysis: {
+          summary: "정적 데모 모드에서는 사진을 실제 분석하지 않습니다. 발표용으로 출혈/화상 가능성 플래그와 사진 품질만 표시합니다.",
+          flags: ["photo_quality_check", "possible_bleeding_or_burn"],
+        },
+        suggested_scenario_id: "bleeding",
+        suggested_title: "출혈",
         image_url: "",
       };
     case "/api/emergency":
@@ -329,18 +272,28 @@ async function loadState() {
   renderEvents();
 }
 
+function categoryIcon(category) {
+  const icons = {
+    상처: '<svg viewBox="0 0 24 24"><path d="M12 3C8 8 6 11 6 14a6 6 0 0 0 12 0c0-3-2-6-6-11z" fill="currentColor"/></svg>',
+    화상: '<svg viewBox="0 0 24 24"><path d="M12 2c3 3.5 5 6 5 9a5 5 0 0 1-10 0c0-1.6.8-3 1.7-4 .1 1 .8 1.7 1.6 1.8C9.3 7.6 9.6 5 12 2z" fill="currentColor"/></svg>',
+    근골격: '<svg viewBox="0 0 24 24"><g fill="currentColor"><circle cx="6.6" cy="17.4" r="2.3"/><circle cx="5" cy="15.8" r="2.3"/><circle cx="17.4" cy="6.6" r="2.3"/><circle cx="19" cy="8.2" r="2.3"/></g><line x1="6.8" y1="17.2" x2="17.2" y2="6.8" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/></svg>',
+    환경: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z"/></svg>',
+    야외: '<svg viewBox="0 0 24 24"><path d="M4 20C4 11 11 4 20 4c0 9-7 16-16 16z" fill="currentColor"/></svg>',
+  };
+  return icons[category] || '<svg viewBox="0 0 24 24"><path d="M12 20S4 14.5 4 9a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5.5-8 11-8 11z" fill="currentColor"/></svg>';
+}
+
 function renderScenarios() {
   const grid = $("#scenarioGrid");
   grid.innerHTML = "";
   appState.scenarios.forEach((scenario) => {
     const button = document.createElement("button");
     button.className = "scenario-card";
+    button.dataset.category = scenario.category || "";
     button.innerHTML = `
+      <span class="scenario-icon" aria-hidden="true">${categoryIcon(scenario.category)}</span>
       <strong>${scenario.title}</strong>
-      <span>${scenario.subtitle}</span>
-      <div class="drawer-chips">
-        ${scenario.drawers.length ? scenario.drawers.map(drawerId => `<span class="chip">${drawerLabel(drawerId)}</span>`).join("") : `<span class="chip">물품 없음</span>`}
-      </div>
+      <span class="scenario-sub">${scenario.subtitle}</span>
     `;
     button.addEventListener("click", () => openRiskDialog(scenario.id));
     grid.appendChild(button);
@@ -390,10 +343,24 @@ function renderInventoryList() {
   `).join("");
 }
 
+const EVENT_LABELS = {
+  static_demo_ready: "데모 준비 완료",
+  demo_session_start: "절차 시작",
+  demo_session_action: "단계 진행",
+  demo_inventory_query: "물품 검색",
+  demo_inventory_open: "서랍 열기",
+  demo_inventory_add: "물품 등록",
+  demo_co_sensor: "CO 센서 수신",
+};
+
+function eventLabel(key) {
+  return EVENT_LABELS[key] || key;
+}
+
 function renderEvents() {
   $("#eventLog").innerHTML = (appState.events || []).slice(0, 10).map((event) => `
     <div class="event-row">
-      <strong>${event.event}</strong>
+      <strong>${eventLabel(event.event)}</strong>
       ${event.at}
     </div>
   `).join("");
@@ -442,7 +409,10 @@ function renderSession(session) {
 
   panel.innerHTML = `
     <div class="session-header">
-      <div>
+      <button id="sessionCloseBtn" class="session-close" type="button" aria-label="홈으로">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <div class="session-title">
         <h1>${session.scenario.title}</h1>
         <p>${session.scenario.subtitle}</p>
       </div>
@@ -478,6 +448,11 @@ function renderSession(session) {
   $("#stopTimerBtn")?.addEventListener("click", stopTimer);
   $("#startMetronomeBtn")?.addEventListener("click", startMetronome);
   $("#stopMetronomeBtn")?.addEventListener("click", stopMetronome);
+  $("#sessionCloseBtn")?.addEventListener("click", () => {
+    stopTimer();
+    stopMetronome();
+    panel.classList.add("hidden");
+  });
 
   if (step.timer_sec && step.timer_sec <= 180) startTimer(step.timer_sec);
   if (!step.metronome) stopMetronome();
@@ -614,7 +589,7 @@ async function addInventoryItem(event) {
   $("#inventoryResult").innerHTML = `<strong>${payload.item.name}</strong><p>${payload.item.layer}단 ${payload.item.cell}칸에 등록했습니다.</p>`;
   $("#inventoryForm").reset();
   $("#itemLayer").value = "3";
-  $("#itemCell").value = "3-2";
+  $("#itemCell").value = "3-1";
   $("#itemQuantity").value = "1";
   await refreshLogs();
 }
@@ -809,16 +784,16 @@ function visualSvg(key, label) {
   const redKeys = new Set(["press", "stack_gauze", "call119", "do_not_pull", "side_pressure", "cpr"]);
   const blueKeys = new Set(["cool_water", "rinse", "cold_pack", "cool_body", "drink_water", "aed"]);
   const amberKeys = new Set(["warm_place", "blanket", "warm_drink", "fresh_air", "do_not_enter"]);
-  const color = redKeys.has(key) ? "#dc2626" : blueKeys.has(key) ? "#2563eb" : amberKeys.has(key) ? "#b45309" : "#0f766e";
+  const color = redKeys.has(key) ? "#c0392b" : blueKeys.has(key) ? "#2f6fb3" : amberKeys.has(key) ? "#b45309" : "#036635";
   return `
     <svg viewBox="0 0 520 360" role="img" aria-label="${title}">
-      <rect width="520" height="360" fill="#f8fafc"/>
-      <circle cx="260" cy="168" r="112" fill="${color}" opacity="0.12"/>
-      <rect x="108" y="214" width="304" height="48" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="4"/>
+      <rect width="520" height="360" fill="#f5f5f7"/>
+      <circle cx="260" cy="168" r="112" fill="${color}" opacity="0.1"/>
+      <rect x="108" y="214" width="304" height="48" rx="8" fill="#ffffff" stroke="#d2d2d7" stroke-width="4"/>
       <path d="M166 210 C198 150 236 122 260 122 C284 122 322 150 354 210" fill="none" stroke="${color}" stroke-width="18" stroke-linecap="round"/>
       <circle cx="260" cy="105" r="34" fill="#ffffff" stroke="${color}" stroke-width="12"/>
       <line x1="196" y1="242" x2="324" y2="242" stroke="${color}" stroke-width="12" stroke-linecap="round"/>
-      <text x="260" y="310" text-anchor="middle" fill="#172033" font-size="34" font-weight="700">${title}</text>
+      <text x="260" y="310" text-anchor="middle" fill="#1d1d1f" font-size="34" font-weight="700">${title}</text>
     </svg>
   `;
 }
