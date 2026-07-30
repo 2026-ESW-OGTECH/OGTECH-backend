@@ -3,21 +3,17 @@ from __future__ import annotations
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
-import base64
+from urllib.parse import parse_qs, urlparse
 import json
-import mimetypes
 import os
 import urllib.request
 
 from hardware import KitController, LedController
 from inventory import InventoryStore
 from safeaid_core import DISCLAIMER, DRAWERS, SCENARIOS, SafeAidEngine, encode_json
-from vision import analyze_image_bytes, result_payload
 
 
 ROOT = Path(__file__).resolve().parent
-STATIC_DIR = ROOT / "static"
 RUNTIME_DIR = ROOT / "runtime"
 
 engine = SafeAidEngine()
@@ -33,11 +29,6 @@ class SafeAidHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        if path == "/":
-            return self.serve_file(STATIC_DIR / "index.html")
-        if path.startswith("/static/"):
-            relative = unquote(path.removeprefix("/static/"))
-            return self.serve_file(STATIC_DIR / relative)
         if path == "/api/state":
             return self.send_json(
                 {
@@ -59,12 +50,6 @@ class SafeAidHandler(BaseHTTPRequestHandler):
             session_id = query.get("session_id", [None])[0]
             leds.show_emergency()
             return self.send_json({"emergency": engine.emergency_summary(session_id), "led": leds.payload()})
-        if path == "/api/latest-image":
-            latest = RUNTIME_DIR / "latest_upload.jpg"
-            if latest.exists():
-                return self.serve_file(latest)
-            return self.send_error_json(HTTPStatus.NOT_FOUND, "업로드된 이미지가 없습니다")
-
         return self.send_error_json(HTTPStatus.NOT_FOUND, "찾을 수 없습니다")
 
     def do_POST(self) -> None:
@@ -162,24 +147,6 @@ class SafeAidHandler(BaseHTTPRequestHandler):
             apply_leds_for_session(session)
             return self.send_json({"session": session, "led": leds.payload()})
 
-        if path == "/api/vision/upload":
-            image_bytes = self.read_image_payload()
-            if not image_bytes:
-                return self.send_error_json(HTTPStatus.BAD_REQUEST, "이미지 데이터가 필요합니다")
-            RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-            (RUNTIME_DIR / "latest_upload.jpg").write_bytes(image_bytes)
-            analysis = result_payload(analyze_image_bytes(image_bytes))
-            suggestion = suggested_scenario_from_vision(analysis["flags"])
-            engine.log("vision_upload", {"analysis": analysis, "suggested_scenario_id": suggestion})
-            return self.send_json(
-                {
-                    "analysis": analysis,
-                    "suggested_scenario_id": suggestion,
-                    "suggested_title": SCENARIOS[suggestion]["title"] if suggestion else None,
-                    "image_url": "/api/latest-image",
-                }
-            )
-
         if path == "/api/sensor/co":
             payload = self.read_json()
             ppm = float(payload.get("ppm", 0))
@@ -196,29 +163,6 @@ class SafeAidHandler(BaseHTTPRequestHandler):
 
         return self.send_error_json(HTTPStatus.NOT_FOUND, "찾을 수 없습니다")
 
-    def serve_file(self, file_path: Path) -> None:
-        try:
-            resolved = file_path.resolve()
-            if not str(resolved).startswith(str(ROOT.resolve())):
-                return self.send_error_json(HTTPStatus.FORBIDDEN, "접근할 수 없습니다")
-            if not resolved.exists() or not resolved.is_file():
-                return self.send_error_json(HTTPStatus.NOT_FOUND, "찾을 수 없습니다")
-            content = resolved.read_bytes()
-            mime = mimetypes.guess_type(str(resolved))[0] or "application/octet-stream"
-            if resolved.suffix == ".html":
-                mime = "text/html; charset=utf-8"
-            elif resolved.suffix == ".css":
-                mime = "text/css; charset=utf-8"
-            elif resolved.suffix == ".js":
-                mime = "application/javascript; charset=utf-8"
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", mime)
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self.wfile.write(content)
-        except OSError as exc:
-            self.send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
-
     def read_json(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
         if length == 0:
@@ -228,19 +172,6 @@ class SafeAidHandler(BaseHTTPRequestHandler):
             return json.loads(raw.decode("utf-8"))
         except json.JSONDecodeError:
             return {}
-
-    def read_image_payload(self) -> bytes:
-        content_type = self.headers.get("Content-Type", "")
-        length = int(self.headers.get("Content-Length", "0"))
-        raw = self.rfile.read(length) if length else b""
-        if "application/json" in content_type:
-            try:
-                payload = json.loads(raw.decode("utf-8"))
-                if "image_b64" in payload:
-                    return base64.b64decode(payload["image_b64"])
-            except Exception:
-                return b""
-        return raw
 
     def send_json(self, payload: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
         content = encode_json(payload)
@@ -302,14 +233,6 @@ def classify_with_optional_ollama(text: str) -> dict:
 
     fallback["classifier"] = "keyword_fallback"
     return fallback
-
-
-def suggested_scenario_from_vision(flags: list[str]) -> str | None:
-    if "bleeding_possible" in flags:
-        return "bleeding"
-    if "burn_possible" in flags:
-        return "burn"
-    return None
 
 
 def apply_leds_for_session(session: dict) -> None:
