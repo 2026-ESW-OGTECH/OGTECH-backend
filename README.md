@@ -1,7 +1,7 @@
 # OGTECH-backend — 안전 분기 엔진과 장치 API
 
 **SafeAid Kit** (2026 임베디드 소프트웨어 경진대회 자유공모 / 팀 OGTECH) 의 백엔드 저장소입니다.
-[조직 개요](https://github.com/2026-ESCW-OGTECH) · [다른 저장소 안내](https://github.com/2026-ESCW-OGTECH/.github)
+[조직 개요](https://github.com/2026-ESW-OGTECH) · [다른 저장소 안내](https://github.com/2026-ESW-OGTECH/.github)
 
 ---
 
@@ -71,5 +71,5 @@ python -B -m unittest discover -v
 | `import app` | ok `[실측: 2026-08-20]` |
 | 단위 테스트 | **`Ran 0 tests` — 테스트가 아직 없습니다.** 통과로 간주하지 않습니다 |
 
-안전 분기 로직의 회귀 테스트는 현재 [OGTECH-llm](https://github.com/2026-ESCW-OGTECH/OGTECH-llm)의
+안전 분기 로직의 회귀 테스트는 현재 [OGTECH-llm](https://github.com/2026-ESW-OGTECH/OGTECH-llm)의
 `Co-LLM/tests/`(55 tests)에서 돌고 있습니다. 이 저장소로 옮기는 것이 남은 과제입니다.
