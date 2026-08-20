@@ -5,7 +5,7 @@
 ## 구현 상태
 
 현재 저장소는 오지 생존 도메인으로 전환 중입니다. 기존 실행 코드는 목표 구조와 일치하지 않을 수 있으며,
-P0 구현 상태는 [조직 PLAN](https://github.com/SmartAid-Kit/.github/blob/main/PLAN.md)과 저장소 이슈를 기준으로 확인합니다.
+P0 구현 상태는 [조직 PLAN](https://github.com/2026-ESCW-OGTECH/.github/blob/main/PLAN.md)과 저장소 이슈를 기준으로 확인합니다.
 확인되지 않은 기능을 구현 완료로 주장하지 않습니다.
 
 ## 목표 역할
@@ -33,7 +33,7 @@ python -B -m unittest discover -v
 - 기상 표시는 예보가 아니라 국지 `추정`입니다.
 - 이 장치는 구조 요청 수단이 아닙니다.
 
-상세 규칙은 [AGENTS.md](https://github.com/SmartAid-Kit/.github/blob/main/AGENTS.md)를 따릅니다.
+상세 규칙은 [AGENTS.md](https://github.com/2026-ESCW-OGTECH/.github/blob/main/AGENTS.md)를 따릅니다.
 
 ## 제3자 라이선스
 
