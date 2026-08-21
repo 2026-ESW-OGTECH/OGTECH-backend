@@ -1,260 +1,167 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""SafeAid 백엔드 — 안전 분기 규칙 엔진 HTTP 서비스 (:8765).
+
+정본 분기 엔진(OGTECH-llm Co-LLM/scripts/safeaid_core.py)의 vendored 사본(core/)을
+표준 라이브러리 http.server 로 노출한다. LLM 은 이 서비스에 없다:
+- 경로 B(생명 관련·refuse)는 규칙이 확정하고 검수된 고정 카드를 돌려준다.
+- 규칙이 못 정한 발화(llm_required)는 LLM 없이 확정하지 않고 unknown 고정 카드로
+  폴백한다(classifier_unavailable). LLM 다듬기(경로 A)는 Co-LLM 파이프라인의 몫이다.
+"""
+
 from __future__ import annotations
 
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+import argparse
 import json
 import os
-import urllib.request
+from dataclasses import asdict
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlsplit
 
-from hardware import KitController, LedController
-from inventory import InventoryStore
-from safeaid_core import DISCLAIMER, DRAWERS, SCENARIOS, SafeAidEngine, encode_json
+from core.safeaid_core import (  # noqa: E402
+    CardRenderer,
+    RuleRouter,
+    SCENARIO_IDS,
+    VoiceContractError,
+)
+
+MAX_BODY_BYTES = 64 * 1024
 
 
-ROOT = Path(__file__).resolve().parent
-RUNTIME_DIR = ROOT / "runtime"
-
-engine = SafeAidEngine()
-leds = LedController(RUNTIME_DIR)
-kit = KitController(RUNTIME_DIR)
-inventory = InventoryStore(RUNTIME_DIR)
+class ApiError(Exception):
+    def __init__(self, status: HTTPStatus, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+        self.message = message
 
 
-class SafeAidHandler(BaseHTTPRequestHandler):
-    server_version = "SafeAidKit/0.1"
+class BackendHandler(BaseHTTPRequestHandler):
+    """규칙 엔진은 초기화 후 읽기 전용이라 핸들러 간 공유에 락이 필요 없다."""
 
-    def do_GET(self) -> None:
-        parsed = urlparse(self.path)
-        path = parsed.path
+    router: RuleRouter
+    renderer: CardRenderer
+    protocol_version = "HTTP/1.1"
 
-        if path == "/api/state":
-            return self.send_json(
-                {
-                    "disclaimer": DISCLAIMER,
-                    "scenarios": engine.list_scenarios(),
-                    "drawers": [{"id": key, **value} for key, value in DRAWERS.items()],
-                    "led": leds.payload(),
-                    "kit": kit.payload(),
-                    "inventory": inventory.list_items(),
-                    "events": engine.events[:12],
-                }
-            )
-        if path == "/api/inventory":
-            return self.send_json({"inventory": inventory.list_items(), "kit": kit.payload()})
-        if path == "/api/logs":
-            return self.send_json({"events": engine.events})
-        if path == "/api/emergency":
-            query = parse_qs(parsed.query)
-            session_id = query.get("session_id", [None])[0]
-            leds.show_emergency()
-            return self.send_json({"emergency": engine.emergency_summary(session_id), "led": leds.payload()})
-        return self.send_error_json(HTTPStatus.NOT_FOUND, "찾을 수 없습니다")
-
-    def do_POST(self) -> None:
-        parsed = urlparse(self.path)
-        path = parsed.path
-
-        if path == "/api/classify":
-            payload = self.read_json()
-            text = str(payload.get("text", "")).strip()
-            if not text:
-                return self.send_error_json(HTTPStatus.BAD_REQUEST, "텍스트가 필요합니다")
-            result = classify_with_optional_ollama(text)
-            return self.send_json(result)
-
-        if path == "/api/inventory/query":
-            payload = self.read_json()
-            text = str(payload.get("text", "")).strip()
-            if not text:
-                return self.send_error_json(HTTPStatus.BAD_REQUEST, "검색할 물품명이 필요합니다.")
-            result = inventory.query(text)
-            engine.log("inventory_query", {"text": text, "result": result})
-            return self.send_json({"result": result, "inventory": inventory.list_items(), "kit": kit.payload()})
-
-        if path == "/api/inventory/open":
-            payload = self.read_json()
-            item_id = str(payload.get("item_id", "")).strip()
-            item = inventory.get_item(item_id)
-            if not item:
-                return self.send_error_json(HTTPStatus.NOT_FOUND, "등록된 물품을 찾을 수 없습니다.")
-            if not item["available"]:
-                return self.send_error_json(HTTPStatus.CONFLICT, "현재 재고가 없습니다.")
-            if not item["auto_open_allowed"]:
-                return self.send_error_json(HTTPStatus.FORBIDDEN, "자동 개방이 허용되지 않은 물품입니다.")
-            result = kit.open_layer(int(item["layer"]), str(item["cell"]))
-            status = HTTPStatus.OK if result["opened"] else HTTPStatus.CONFLICT
-            engine.log("inventory_open", {"item_id": item_id, "kit": result})
-            return self.send_json({"item": item, "kit": result, "inventory": inventory.list_items()}, status=status)
-
-        if path == "/api/inventory/items":
-            payload = self.read_json()
-            try:
-                item = inventory.add_item(payload)
-            except ValueError as exc:
-                return self.send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
-            engine.log("inventory_add", {"item": item})
-            return self.send_json({"item": item, "inventory": inventory.list_items(), "kit": kit.payload()})
-
-        if path == "/api/inventory/stock":
-            payload = self.read_json()
-            sensor_id = str(payload.get("sensor_id", "")).strip()
-            present = bool(payload.get("present", False))
-            if not sensor_id:
-                return self.send_error_json(HTTPStatus.BAD_REQUEST, "sensor_id가 필요합니다.")
-            kit_result = kit.update_stock_sensor(sensor_id, present)
-            inventory_result = inventory.update_stock_from_sensor(sensor_id, present)
-            engine.log("inventory_stock", {"sensor_id": sensor_id, "present": present, "updated": inventory_result["updated"]})
-            return self.send_json({"stock": inventory_result, "kit": kit_result, "inventory": inventory.list_items()})
-
-        if path == "/api/kit/battery":
-            payload = self.read_json()
-            result = kit.update_battery(
-                voltage=float(payload.get("voltage", 13.2)),
-                percent=int(payload.get("percent", 0)),
-                charging=bool(payload.get("charging", False)),
-            )
-            engine.log("kit_battery", result)
-            return self.send_json({"kit": kit.payload()})
-
-        if path == "/api/start":
-            payload = self.read_json()
-            scenario_id = str(payload.get("scenario_id", ""))
-            source = str(payload.get("source", "touch"))
-            risk_flags = payload.get("risk_flags") or []
-            try:
-                session = engine.start_session(scenario_id, source=source, risk_flags=list(risk_flags))
-            except ValueError as exc:
-                return self.send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
-            apply_leds_for_session(session)
-            return self.send_json({"session": session, "led": leds.payload()})
-
-        if path == "/api/cpr/start":
-            session = engine.start_session("cpr", source="life_threat", risk_flags=["unconscious", "abnormal_breathing"])
-            leds.show_emergency()
-            return self.send_json({"session": session, "led": leds.payload()})
-
-        if path.startswith("/api/session/") and path.endswith("/action"):
-            parts = path.strip("/").split("/")
-            session_id = parts[2] if len(parts) >= 4 else ""
-            payload = self.read_json()
-            action = str(payload.get("action", "done"))
-            try:
-                session = engine.advance_session(session_id, action)
-            except ValueError as exc:
-                return self.send_error_json(HTTPStatus.NOT_FOUND, str(exc))
-            apply_leds_for_session(session)
-            return self.send_json({"session": session, "led": leds.payload()})
-
-        if path == "/api/sensor/co":
-            payload = self.read_json()
-            ppm = float(payload.get("ppm", 0))
-            danger = ppm >= float(os.getenv("SAFEAID_CO_DANGER_PPM", "50"))
-            event_payload = {"ppm": ppm, "danger": danger}
-            if danger:
-                session = engine.start_session("co", source="co_sensor", risk_flags=["co_exposure"])
-                leds.show_emergency()
-                event_payload["session_id"] = session["id"]
-                engine.log("co_sensor_danger", event_payload)
-                return self.send_json({"danger": True, "session": session, "led": leds.payload()})
-            engine.log("co_sensor_ok", event_payload)
-            return self.send_json({"danger": False, "ppm": ppm, "led": leds.payload()})
-
-        return self.send_error_json(HTTPStatus.NOT_FOUND, "찾을 수 없습니다")
-
-    def read_json(self) -> dict:
-        length = int(self.headers.get("Content-Length", "0"))
-        if length == 0:
-            return {}
-        raw = self.rfile.read(length)
-        try:
-            return json.loads(raw.decode("utf-8"))
-        except json.JSONDecodeError:
-            return {}
-
-    def send_json(self, payload: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
-        content = encode_json(payload)
-        self.send_response(status)
+    # ---------- helpers ----------
+    def _send_json(self, status: HTTPStatus, payload: dict) -> None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(int(status))
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Content-Length", str(len(body)))
+        if int(status) >= 400:
+            # 오류 응답 시 미소비 요청 본문이 keep-alive 커넥션의 다음 요청으로 오파싱되지 않도록 닫는다.
+            self.send_header("Connection", "close")
+            self.close_connection = True
         self.end_headers()
-        self.wfile.write(content)
+        self.wfile.write(body)
 
-    def send_error_json(self, status: HTTPStatus, message: str) -> None:
-        self.send_json({"error": message}, status=status)
+    def _read_json(self) -> dict:
+        raw_length = self.headers.get("Content-Length")
+        try:
+            length = int(raw_length) if raw_length is not None else 0
+        except (TypeError, ValueError):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "Content-Length가 정수가 아닙니다")
+        if length < 0 or length > MAX_BODY_BYTES:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "본문 크기가 허용 범위를 벗어났습니다")
+        raw = self.rfile.read(length) if length else b""
+        if not raw:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "JSON 본문이 필요합니다")
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "본문이 유효한 JSON이 아닙니다")
+        if not isinstance(payload, dict):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "JSON 객체가 필요합니다")
+        return payload
 
-    def log_message(self, format: str, *args) -> None:
-        print(f"[SafeAid] {self.address_string()} - {format % args}")
+    def _require_text(self, payload: dict) -> str:
+        text = payload.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "text 필드(비어 있지 않은 문자열)가 필요합니다")
+        return text
+
+    # ---------- routes ----------
+    def do_GET(self) -> None:  # noqa: N802 - 표준 라이브러리 규약
+        try:
+            path = urlsplit(self.path).path
+            if path == "/api/health":
+                self._send_json(HTTPStatus.OK, {
+                    "status": "ok",
+                    "engine": "rule_router",
+                    "scenarios": len(SCENARIO_IDS),
+                    "llm": False,
+                })
+                return
+            if path.startswith("/api/card/"):
+                scenario_id = path.rsplit("/", 1)[-1]
+                if scenario_id not in SCENARIO_IDS:
+                    raise ApiError(HTTPStatus.NOT_FOUND, f"알 수 없는 scenario_id: {scenario_id}")
+                card = self.renderer.render(scenario_id)
+                self._send_json(HTTPStatus.OK, asdict(card))
+                return
+            raise ApiError(HTTPStatus.NOT_FOUND, "알 수 없는 경로입니다")
+        except ApiError as exc:
+            self._send_json(exc.status, {"error": exc.message})
+        except VoiceContractError as exc:
+            self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+        except Exception:  # noqa: BLE001 - 어떤 예외도 응답 없이 죽지 않는다
+            self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "internal_error"})
+
+    def do_POST(self) -> None:  # noqa: N802 - 표준 라이브러리 규약
+        try:
+            path = urlsplit(self.path).path
+            if path == "/api/classify":
+                payload = self._read_json()
+                text = self._require_text(payload)
+                decision = self.router.resolve(text)  # classifier 없음 → 생명/미확정은 고정 폴백
+                self._send_json(HTTPStatus.OK, asdict(decision))
+                return
+            if path == "/api/respond":
+                payload = self._read_json()
+                text = self._require_text(payload)
+                device = payload.get("device")
+                if device is not None and not isinstance(device, dict):
+                    raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "device는 JSON 객체여야 합니다")
+                decision = self.router.resolve(text)
+                card = self.renderer.render(decision.scenario_id, device)
+                self._send_json(HTTPStatus.OK, {
+                    "decision": asdict(decision),
+                    "card": asdict(card),
+                })
+                return
+            raise ApiError(HTTPStatus.NOT_FOUND, "알 수 없는 경로입니다")
+        except ApiError as exc:
+            self._send_json(exc.status, {"error": exc.message})
+        except VoiceContractError as exc:
+            self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+        except Exception:  # noqa: BLE001
+            self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "internal_error"})
+
+    def log_message(self, fmt: str, *args) -> None:  # 콘솔 소음 억제
+        pass
 
 
-def classify_with_optional_ollama(text: str) -> dict:
-    fallback = engine.classify_text(text)
-    if os.getenv("SAFEAID_USE_OLLAMA", "0") != "1":
-        fallback["classifier"] = "keyword_fallback"
-        return fallback
+def build_server(host: str, port: int) -> ThreadingHTTPServer:
+    handler = BackendHandler
+    handler.router = RuleRouter()
+    handler.renderer = CardRenderer()
+    return ThreadingHTTPServer((host, port), handler)
 
-    model = os.getenv("SAFEAID_OLLAMA_MODEL", "qwen2.5:1.5b")
-    prompt = {
-        "instruction": "응급처치 방법을 생성하지 말고 사용자 발화를 아래 scenario_id 중 하나로만 분류해 JSON만 반환하세요.",
-        "scenario_ids": list(SCENARIOS.keys()),
-        "text": text,
-        "schema": {"scenario_id": "string", "confidence": "low|medium|high", "risk_flags": ["string"]},
-    }
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="SafeAid 백엔드 규칙 엔진 서비스")
+    parser.add_argument("--host", default=os.environ.get("SAFEAID_BACKEND_HOST", "127.0.0.1"),
+                        help="바인드 주소 (기본 127.0.0.1 — 키오스크 로컬 전용)")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("SAFEAID_BACKEND_PORT", "8765")))
+    args = parser.parse_args()
+    server = build_server(args.host, args.port)
+    print(f"SafeAid backend rule engine on http://{args.host}:{args.port}")
     try:
-        req = urllib.request.Request(
-            "http://127.0.0.1:11434/api/generate",
-            data=json.dumps(
-                {
-                    "model": model,
-                    "prompt": json.dumps(prompt, ensure_ascii=False),
-                    "stream": False,
-                    "format": "json",
-                },
-                ensure_ascii=False,
-            ).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=12) as response:
-            ollama_payload = json.loads(response.read().decode("utf-8"))
-        parsed = json.loads(ollama_payload.get("response", "{}"))
-        scenario_id = parsed.get("scenario_id")
-        if scenario_id in SCENARIOS:
-            parsed["scenario_title"] = SCENARIOS[scenario_id]["title"]
-            parsed["risk_flags"] = sorted(set(parsed.get("risk_flags", [])) | set(fallback["risk_flags"]))
-            parsed["raw_text"] = text
-            parsed["classifier"] = f"ollama:{model}"
-            engine.log("classify_ollama", parsed)
-            return parsed
-    except Exception as exc:
-        fallback["ollama_error"] = str(exc)
-
-    fallback["classifier"] = "keyword_fallback"
-    return fallback
-
-
-def apply_leds_for_session(session: dict) -> None:
-    if session.get("force_emergency"):
-        leds.show_emergency()
-        return
-    drawer_ids = [drawer["id"] for drawer in session.get("drawers", [])]
-    if drawer_ids:
-        color = session["drawers"][0].get("color", "#dc2626")
-        leds.show_drawers(drawer_ids, color=color)
-    else:
-        leds.clear()
-
-
-def run() -> None:
-    host = os.getenv("SAFEAID_HOST", "0.0.0.0")
-    port = int(os.getenv("SAFEAID_PORT", "8765"))
-    server = ThreadingHTTPServer((host, port), SafeAidHandler)
-    print(f"오프라인 SafeAid Kit 실행 중: http://{host}:{port}")
-    print("중지하려면 Ctrl+C를 누르세요.")
-    server.serve_forever()
+        server.serve_forever()
+    except KeyboardInterrupt:
+        server.shutdown()
 
 
 if __name__ == "__main__":
-    run()
+    main()
