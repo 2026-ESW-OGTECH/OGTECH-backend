@@ -1,6 +1,6 @@
 # OGTECH-backend — 안전 분기 규칙 엔진 서비스
 
-**SafeAid Kit** (2026 임베디드 소프트웨어 경진대회 자유공모 / 팀 OGTECH) 의 백엔드 저장소입니다.
+**OGTECH Kit** (2026 임베디드 소프트웨어 경진대회 자유공모 / 팀 OGTECH) 의 백엔드 저장소입니다.
 [조직 개요](https://github.com/2026-ESW-OGTECH) · [다른 저장소 안내](https://github.com/2026-ESW-OGTECH/.github)
 
 ---
@@ -10,7 +10,7 @@
 **사용자 발화를 검수된 고정 카드로 직행시킬지 판정하는 규칙 엔진을 HTTP로 노출한다.**
 
 정본 분기 엔진은 [OGTECH-llm](https://github.com/2026-ESW-OGTECH/OGTECH-llm)의
-`Co-LLM/scripts/safeaid_core.py`이며, 이 저장소는 그 **vendored 사본**(`core/`)을
+`Co-LLM/scripts/ogtech_core.py`이며, 이 저장소는 그 **vendored 사본**(`core/`)을
 `http.server` 표준 라이브러리만으로 `:8765`에 서비스합니다.
 사본과 정본의 바이트 단위 일치는 `tests/test_vendor_sync.py`가 강제합니다 —
 동명 파일이 서로 다른 내용으로 갈라지는 사고를 테스트가 막습니다.
@@ -27,7 +27,7 @@
 
 ```text
 app.py                       HTTP 서비스 (:8765) — 라우팅·에러 처리만 담당
-core/safeaid_core.py         정본 미러(vendored). 직접 수정 금지 — 정본에서 고치고 복사
+core/ogtech_core.py         정본 미러(vendored). 직접 수정 금지 — 정본에서 고치고 복사
 config/keyword_rules.yaml    키워드 게이트 규칙 (정본 미러)
 config/survival_cards.json   검수된 고정 카드 (정본 미러)
 tests/test_app.py            HTTP 계층 단위 테스트 8개

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""SafeAid 백엔드 — 안전 분기 규칙 엔진 HTTP 서비스 (:8765).
+"""OGTECH 백엔드 — 안전 분기 규칙 엔진 HTTP 서비스 (:8765).
 
-정본 분기 엔진(OGTECH-llm Co-LLM/scripts/safeaid_core.py)의 vendored 사본(core/)을
+정본 분기 엔진(OGTECH-llm Co-LLM/scripts/ogtech_core.py)의 vendored 사본(core/)을
 표준 라이브러리 http.server 로 노출한다. LLM 은 이 서비스에 없다:
 - 경로 B(생명 관련·refuse)는 규칙이 확정하고 검수된 고정 카드를 돌려준다.
 - 규칙이 못 정한 발화(llm_required)는 LLM 없이 확정하지 않고 unknown 고정 카드로
@@ -19,7 +19,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
-from core.safeaid_core import (  # noqa: E402
+from core.ogtech_core import (  # noqa: E402
     CardRenderer,
     RuleRouter,
     SCENARIO_IDS,
@@ -150,13 +150,13 @@ def build_server(host: str, port: int) -> ThreadingHTTPServer:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="SafeAid 백엔드 규칙 엔진 서비스")
-    parser.add_argument("--host", default=os.environ.get("SAFEAID_BACKEND_HOST", "127.0.0.1"),
+    parser = argparse.ArgumentParser(description="OGTECH 백엔드 규칙 엔진 서비스")
+    parser.add_argument("--host", default=os.environ.get("OGTECH_BACKEND_HOST", "127.0.0.1"),
                         help="바인드 주소 (기본 127.0.0.1 — 키오스크 로컬 전용)")
-    parser.add_argument("--port", type=int, default=int(os.environ.get("SAFEAID_BACKEND_PORT", "8765")))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("OGTECH_BACKEND_PORT", "8765")))
     args = parser.parse_args()
     server = build_server(args.host, args.port)
-    print(f"SafeAid backend rule engine on http://{args.host}:{args.port}")
+    print(f"OGTECH backend rule engine on http://{args.host}:{args.port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

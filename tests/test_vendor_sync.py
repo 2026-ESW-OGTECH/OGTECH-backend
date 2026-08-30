@@ -8,7 +8,7 @@ BACKEND = Path(__file__).resolve().parent.parent
 LLM = BACKEND.parent / "OGTECH-llm" / "Co-LLM"
 
 PAIRS = [
-    (BACKEND / "core" / "safeaid_core.py", LLM / "scripts" / "safeaid_core.py"),
+    (BACKEND / "core" / "ogtech_core.py", LLM / "scripts" / "ogtech_core.py"),
     (BACKEND / "config" / "keyword_rules.yaml", LLM / "config" / "keyword_rules.yaml"),
     (BACKEND / "config" / "survival_cards.json", LLM / "config" / "survival_cards.json"),
 ]
